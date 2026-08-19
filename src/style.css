@@ -200,7 +200,7 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
   padding-bottom: var(--space-md);
   border-bottom: 1px solid var(--border-dark);
 }
@@ -218,6 +218,179 @@ body::before {
   font-size: 1.3rem;
 }
 
+/* Group Selector Dropdown */
+.group-selector-wrapper {
+  margin-bottom: var(--space-lg);
+  background: rgba(18, 14, 24, 0.75);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.4);
+}
+
+.group-selector-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-title);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.group-select {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  background: var(--bg-input-focus);
+  color: var(--gold-light);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-title);
+  font-size: 0.95rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.group-select:focus {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 10px var(--gold-glow);
+}
+
+.group-select option {
+  background: #1a1520;
+  color: var(--text-primary);
+  padding: 0.5rem;
+}
+
+/* Custom Checkboxes */
+.custom-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-bright);
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: all 0.2s ease;
+  vertical-align: middle;
+  position: relative;
+}
+
+.custom-checkbox:hover {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 6px var(--gold-glow);
+}
+
+.custom-checkbox:checked {
+  background: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold-primary) 100%);
+  border-color: var(--gold-light);
+  box-shadow: 0 0 8px var(--gold-glow);
+}
+
+.custom-checkbox:checked::after {
+  content: "✓";
+  font-size: 13px;
+  font-weight: 900;
+  color: #1a1202;
+  line-height: 1;
+}
+
+/* Section Title Bar with Toggle Checkbox */
+.section-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-title);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-toggle:hover {
+  color: var(--gold-light);
+}
+
+/* Portrait Uploader Box */
+.portrait-uploader-box {
+  background: rgba(20, 16, 26, 0.6);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+/* Skills Grid */
+.skills-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.skills-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.skills-grid::-webkit-scrollbar-thumb {
+  background: var(--gold-dark);
+  border-radius: 2px;
+}
+
+.skill-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(25, 20, 32, 0.6);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dark);
+  font-size: 0.85rem;
+}
+
+.skill-item:hover {
+  border-color: var(--border-medium);
+}
+
+.skill-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.skill-val {
+  width: 40px;
+  padding: 0.15rem 0.3rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-sm);
+  color: var(--gold-light);
+  font-family: var(--font-accent);
+  font-size: 0.9rem;
+  text-align: center;
+  outline: none;
+}
+
+.skill-val:focus {
+  border-color: var(--gold-primary);
+}
+
 /* Form Sections */
 .form-section {
   margin-bottom: var(--space-lg);
@@ -227,7 +400,7 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  margin-bottom: var(--space-md);
+  margin-bottom: 0;
 }
 
 .section-title h3 {
@@ -550,6 +723,29 @@ body::before {
   width: 100%;
   max-width: 900px;
   height: auto;
+}
+
+/* Portrait Container and Overlay */
+.overlay-portrait-container {
+  position: absolute;
+  left: 38%;
+  top: 13.5%;
+  width: 24%;
+  height: 60.5%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 46% 46% 8% 8% / 32% 32% 8% 8%;
+}
+
+.overlay-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
 }
 
 /* Overlay Text (positioned absolutely over the template) */
