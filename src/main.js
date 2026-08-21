@@ -437,6 +437,18 @@ function setupListeners() {
   document.getElementById('randomBtn').addEventListener('click', generateRandom);
   document.getElementById('calibrateBtn').addEventListener('click', toggleCalibration);
   
+  // D&D Beyond URL/ID Importer
+  const importUrlBtn = document.getElementById('importUrlBtn');
+  const dndbUrlInput = document.getElementById('dndbUrlInput');
+  if (importUrlBtn) {
+    importUrlBtn.addEventListener('click', importFromDndbUrl);
+  }
+  if (dndbUrlInput) {
+    dndbUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') importFromDndbUrl();
+    });
+  }
+
   // JSON Import
   document.getElementById('importJsonBtn').addEventListener('click', () => {
     document.getElementById('jsonFileInput').click();
@@ -445,7 +457,89 @@ function setupListeners() {
 }
 
 // =========================================
-// JSON Import Logic (D&D Beyond)
+// URL / ID Import Logic (D&D Beyond API)
+// =========================================
+function extractCharacterId(input) {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) return trimmed;
+  const matchChar = trimmed.match(/characters\/(\d+)/i);
+  if (matchChar) return matchChar[1];
+  const matchService = trimmed.match(/character\/(\d+)/i);
+  if (matchService) return matchService[1];
+  return null;
+}
+
+async function importFromDndbUrl() {
+  const urlInput = document.getElementById('dndbUrlInput');
+  const rawVal = urlInput ? urlInput.value : '';
+  const charId = extractCharacterId(rawVal);
+
+  if (!charId) {
+    alert("Por favor, ingresa una URL de personaje de D&D Beyond válida (ej: https://www.dndbeyond.com/characters/155088686) o el ID numérico.");
+    return;
+  }
+
+  const btn = document.getElementById('importUrlBtn');
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = '<span class="btn-icon">⏳</span> Cargando...';
+  btn.disabled = true;
+
+  const targetApiUrl = `https://character-service.dndbeyond.com/character/v5/character/${charId}?includeCustomItems=true`;
+
+  try {
+    let json = null;
+    
+    // 1. Intentar fetch directo
+    try {
+      const response = await fetch(targetApiUrl);
+      if (response.ok) {
+        json = await response.json();
+      }
+    } catch (e) {
+      console.warn("Fetch directo no disponible, usando proxy...", e);
+    }
+
+    // 2. Si falla por CORS, usar proxies públicos confiables
+    if (!json || !json.data) {
+      const proxyCandidates = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetApiUrl)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(targetApiUrl)}`
+      ];
+
+      for (const proxyUrl of proxyCandidates) {
+        try {
+          const resp = await fetch(proxyUrl);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && (data.data || data.success)) {
+              json = data;
+              break;
+            }
+          }
+        } catch (proxyErr) {
+          console.warn("Proxy falló:", proxyUrl, proxyErr);
+        }
+      }
+    }
+
+    if (!json || !json.data) {
+      throw new Error("No se pudo obtener la información del personaje. Asegúrate de que el personaje sea público en D&D Beyond.");
+    }
+
+    parseDdbJson(json);
+    
+  } catch (error) {
+    console.error("Error al importar desde D&D Beyond:", error);
+    alert(`Error al importar personaje: ${error.message}\n\nAsegúrate de que la hoja de personaje esté configurada como 'Pública' en D&D Beyond.`);
+  } finally {
+    btn.innerHTML = originalHtml;
+    btn.disabled = false;
+  }
+}
+
+// =========================================
+// JSON File Import Logic
 // =========================================
 function importJsonFile(e) {
   const file = e.target.files[0];

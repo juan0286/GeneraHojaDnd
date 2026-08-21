@@ -514,11 +514,25 @@
 
         <!-- Action Buttons -->
         <div class="action-buttons">
-          <button id="importJsonBtn" class="export-btn" style="background: linear-gradient(135deg, #4b2d6b 0%, #8c3cc4 50%, #4b2d6b 100%); border-color: #8c3cc4; width: 100%; margin-bottom: 0.5rem;">
-            <span class="btn-icon">📥</span>
-            Importar JSON (D&D Beyond)
-            <span class="btn-glow"></span>
-          </button>
+          <!-- D&D Beyond URL/ID Importer Box -->
+          <div class="dndb-import-box" style="margin-bottom: 0.75rem; background: rgba(75, 45, 107, 0.25); border: 1px solid #8c3cc4; border-radius: var(--radius-md); padding: 0.6rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+              <span style="font-family: var(--font-title); font-size: 0.8rem; font-weight: 700; color: var(--gold-light);">
+                🔗 Importar por URL o ID (D&D Beyond)
+              </span>
+            </div>
+            <div style="display: flex; gap: 0.4rem;">
+              <input type="text" id="dndbUrlInput" placeholder="URL o ID (ej: 155088686)" style="flex: 1; padding: 0.4rem 0.6rem; font-size: 0.85rem; background: var(--bg-input); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 4px; outline: none;" />
+              <button id="importUrlBtn" class="export-btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; background: linear-gradient(135deg, #4b2d6b 0%, #8c3cc4 50%, #4b2d6b 100%); border-color: #8c3cc4; white-space: nowrap;">
+                <span class="btn-icon">⚡</span> Cargar
+              </button>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 0.4rem;">
+              <button id="importJsonBtn" style="background: none; border: none; color: var(--text-secondary); font-size: 0.75rem; cursor: pointer; text-decoration: underline;">
+                📁 O cargar archivo .json local
+              </button>
+            </div>
+          </div>
           <!-- Hidden file input for JSON -->
           <input type="file" id="jsonFileInput" accept=".json" style="display: none;" />
           
