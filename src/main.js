@@ -571,13 +571,48 @@ function parseDdbJson(json) {
     document.querySelectorAll(`#${id}`).forEach(el => el.value = val);
   };
 
-  // Name
+  // Helper translations
+  const damageTypeTranslations = {
+    'Bludgeoning': 'Contundente',
+    'Piercing': 'Perforante',
+    'Slashing': 'Cortante',
+    'Fire': 'Fuego',
+    'Cold': 'Frío',
+    'Lightning': 'Relámpago',
+    'Thunder': 'Trueno',
+    'Poison': 'Veneno',
+    'Acid': 'Ácido',
+    'Psychic': 'Psíquico',
+    'Necrotic': 'Necrótico',
+    'Radiant': 'Radiante',
+    'Force': 'Fuerza'
+  };
+
+  // 1. COMBINE ALL MODIFIERS from all sources (race, class, background, item, feat, condition)
+  const allMods = [];
+  if (data.modifiers) {
+    Object.values(data.modifiers).forEach(arr => {
+      if (Array.isArray(arr)) allMods.push(...arr);
+    });
+  }
+
+  // Also include modifiers granted by equipped items directly
+  if (data.inventory) {
+    data.inventory.forEach(item => {
+      if (item.equipped && item.definition && item.definition.grantedModifiers) {
+        allMods.push(...item.definition.grantedModifiers);
+      }
+    });
+  }
+
+  // 2. NAME & IDENTITY
   formData.name = data.name || '';
   setVal('charName', formData.name);
 
-  // Level & Class
+  // Total Level & Class
+  let totalLevel = 1;
   if (data.classes && data.classes.length > 0) {
-    const totalLevel = data.classes.reduce((sum, cls) => sum + cls.level, 0);
+    totalLevel = data.classes.reduce((sum, cls) => sum + cls.level, 0);
     formData.level = String(totalLevel);
     setVal('charLevel', formData.level);
 
@@ -589,101 +624,210 @@ function parseDdbJson(json) {
   formData.species = data.race ? data.race.fullName || data.race.baseName : '';
   setVal('charSpecies', formData.species);
 
-  // HP
-  formData.hp = String(data.baseHitPoints || '');
-  setVal('combatHP', formData.hp);
-
-  // Proficiency Bonus calculation
-  const profBonus = Math.ceil(Number(formData.level || 1) / 4) + 1;
+  // Proficiency Bonus
+  const profBonus = Math.ceil(totalLevel / 4) + 1;
   formData.profBonus = `+${profBonus}`;
   setVal('profBonus', formData.profBonus);
 
-  // Stats calculation
-  const getModifier = (val) => {
-    const mod = Math.floor((val - 10) / 2);
-    return mod >= 0 ? `+${mod}` : `${mod}`;
-  };
-
+  // 3. STATS & MODIFIERS (Incorporates base, bonus modifiers from all sources, bonusStats, set modifiers, and overrides)
   const statMap = { 1: 'str', 2: 'dex', 3: 'con', 4: 'int', 5: 'wis', 6: 'cha' };
-  const statValues = { 1: 10, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10 };
-  if (data.stats) {
-    data.stats.forEach(s => statValues[s.id] = s.value);
-  }
+  const statNames = { 1: 'strength', 2: 'dexterity', 3: 'constitution', 4: 'intelligence', 5: 'wisdom', 6: 'charisma' };
 
-  if (data.modifiers && data.modifiers.race) {
-    data.modifiers.race.forEach(mod => {
-      if (mod.type === 'bonus' && mod.subType.includes('-score')) {
-        const mapToId = { 'strength-score': 1, 'dexterity-score': 2, 'constitution-score': 3, 'intelligence-score': 4, 'wisdom-score': 5, 'charisma-score': 6 };
-        const id = mapToId[mod.subType];
-        if (id) statValues[id] += mod.value;
-      }
-    });
-  }
-
-  const saveProfs = [];
-  if (data.modifiers && data.modifiers.class) {
-    data.modifiers.class.forEach(mod => {
-      if (mod.type === 'proficiency' && mod.subType.includes('-saving-throws')) {
-        const mapToStat = { 'strength-saving-throws': 'str', 'dexterity-saving-throws': 'dex', 'constitution-saving-throws': 'con', 'intelligence-saving-throws': 'int', 'wisdom-saving-throws': 'wis', 'charisma-saving-throws': 'cha' };
-        if (mapToStat[mod.subType]) saveProfs.push(mapToStat[mod.subType]);
-      }
-    });
-  }
-
+  const finalStats = {};
   const statMods = {};
-  Object.entries(statMap).forEach(([id, statName]) => {
-    const totalVal = statValues[id];
-    const mod = Math.floor((totalVal - 10) / 2);
-    statMods[statName] = mod;
-    
-    formData[statName].value = String(totalVal);
-    setVal(`${statName}Value`, String(totalVal));
-    
-    formData[statName].mod = getModifier(totalVal);
-    setVal(`${statName}Mod`, formData[statName].mod);
 
-    const saveVal = saveProfs.includes(statName) ? mod + profBonus : mod;
-    formData[statName].save = saveVal >= 0 ? `+${saveVal}` : String(saveVal);
-    setVal(`${statName}Save`, formData[statName].save);
+  for (let id = 1; id <= 6; id++) {
+    const statKey = statMap[id];
+    const statName = statNames[id];
+
+    // Base score
+    let score = 10;
+    if (data.stats) {
+      const baseObj = data.stats.find(s => s.id === id);
+      if (baseObj && baseObj.value != null) score = baseObj.value;
+    }
+
+    // Add all score bonuses from all modifier categories (race, class, background, item, feat)
+    allMods.forEach(m => {
+      if (m.type === 'bonus' && m.subType === `${statName}-score`) {
+        score += (m.value || 0);
+      }
+    });
+
+    // Add bonusStats
+    if (data.bonusStats) {
+      const bObj = data.bonusStats.find(s => s.id === id);
+      if (bObj && bObj.value != null) score += bObj.value;
+    }
+
+    // Set modifiers (e.g. Gauntlets of Ogre Power = 19, Headband of Intellect = 19)
+    allMods.forEach(m => {
+      if (m.type === 'set' && m.subType === `${statName}-score`) {
+        if (m.value && m.value > score) score = m.value;
+      }
+    });
+
+    // Override score (manual user override in D&D Beyond)
+    if (data.overrideStats) {
+      const oObj = data.overrideStats.find(s => s.id === id);
+      if (oObj && oObj.value != null) score = oObj.value;
+    }
+
+    finalStats[statKey] = score;
+    const mod = Math.floor((score - 10) / 2);
+    statMods[statKey] = mod;
+
+    formData[statKey].value = String(score);
+    formData[statKey].mod = mod >= 0 ? `+${mod}` : String(mod);
+
+    setVal(`${statKey}Value`, formData[statKey].value);
+    setVal(`${statKey}Mod`, formData[statKey].mod);
+  }
+
+  // 4. SAVING THROWS (Ability mod + prof bonus + global save bonuses from items like Cloak/Ring/Robe of Protection + specific save bonuses)
+  let globalSaveBonus = 0;
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && m.subType === 'saving-throws') {
+      globalSaveBonus += (m.value || 0);
+    }
   });
 
-  // Combat Stats (Init, CD, Speed, AC)
-  const dexMod = statMods.dex || 0;
-  formData.init = dexMod >= 0 ? `+${dexMod}` : String(dexMod);
+  for (let id = 1; id <= 6; id++) {
+    const statKey = statMap[id];
+    const statName = statNames[id];
+
+    const isProf = allMods.some(m => m.type === 'proficiency' && m.subType === `${statName}-saving-throws`);
+    let specSaveBonus = 0;
+    allMods.forEach(m => {
+      if (m.type === 'bonus' && m.subType === `${statName}-saving-throws`) {
+        specSaveBonus += (m.value || 0);
+      }
+    });
+
+    const totalSave = statMods[statKey] + (isProf ? profBonus : 0) + globalSaveBonus + specSaveBonus;
+    formData[statKey].save = totalSave >= 0 ? `+${totalSave}` : String(totalSave);
+    setVal(`${statKey}Save`, formData[statKey].save);
+  }
+
+  // 5. HIT POINTS (Base HP + CON mod * level + hp per level bonus * level + bonusHitPoints or override)
+  let conMod = statMods.con;
+  let maxHp = data.baseHitPoints || 0;
+  let hpPerLevel = 0;
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && m.subType === 'hit-points-per-level') {
+      hpPerLevel += (m.value || 0);
+    }
+  });
+  maxHp += (conMod * totalLevel) + (hpPerLevel * totalLevel);
+  if (data.bonusHitPoints) maxHp += data.bonusHitPoints;
+  if (data.overrideHitPoints) maxHp = data.overrideHitPoints;
+
+  const curHp = maxHp - (data.removedHitPoints || 0);
+  formData.hp = `${curHp}/${maxHp}`;
+  if (data.temporaryHitPoints && data.temporaryHitPoints > 0) {
+    formData.hp += ` (+${data.temporaryHitPoints} temp)`;
+  }
+  setVal('combatHP', formData.hp);
+
+  // 6. INITIATIVE (DEX mod + all initiative bonuses e.g. Alert feat, Swashbuckler, Bard)
+  let initBonus = statMods.dex;
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && m.subType === 'initiative') {
+      initBonus += (m.value || 0);
+    }
+  });
+  formData.init = initBonus >= 0 ? `+${initBonus}` : String(initBonus);
   setVal('combatInit', formData.init);
 
-  const wisMod = statMods.wis || 0;
-  let ac = 10 + dexMod;
-  if (data.classes && data.classes.some(c => c.definition.name.toLowerCase() === 'monk')) {
-    ac += wisMod;
-  }
-  
+  // 7. SPEED (Base + all unarmored-movement, speed bonuses, etc.)
+  let speed = data.race && data.race.weightSpeeds ? data.race.weightSpeeds.normal.walk : 30;
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && (m.subType === 'speed' || m.subType === 'unarmored-movement' || m.subType === 'walking-speed')) {
+      speed += (m.value || 0);
+    }
+    if (m.type === 'set' && m.subType === 'innate-speed-walking') {
+      if (m.value && m.value > speed) speed = m.value;
+    }
+  });
+  formData.speed = `${speed} ft`;
+  setVal('combatSpeed', formData.speed);
+
+  // 8. ARMOR CLASS (CA) (Equipped armor, shields, unarmored defense, and global item/feat bonuses)
+  let shieldBonus = 0;
+  let armorItem = null;
+  let hasUnarmoredDefense = false;
+  let unarmoredWis = false;
+  let unarmoredCon = false;
+
+  allMods.forEach(m => {
+    if (m.type === 'set' && m.subType === 'unarmored-armor-class') {
+      hasUnarmoredDefense = true;
+      if (m.statId === 5) unarmoredWis = true; // Monk (10 + DEX + WIS)
+      if (m.statId === 3) unarmoredCon = true; // Barbarian (10 + DEX + CON)
+    }
+  });
+
   if (data.inventory) {
     data.inventory.forEach(inv => {
-      if (inv.equipped && inv.definition && inv.definition.grantedModifiers) {
-        inv.definition.grantedModifiers.forEach(m => {
-          if (m.subType === 'armor-class') ac += m.value;
-        });
+      if (inv.equipped && inv.definition && inv.definition.filterType === 'Armor') {
+        if (inv.definition.armorTypeId === 4) {
+          shieldBonus += (inv.definition.armorClass || 2);
+        } else {
+          armorItem = inv;
+        }
       }
     });
   }
-  formData.ac = String(ac);
+
+  let finalAC = 10;
+  if (armorItem) {
+    const def = armorItem.definition;
+    const baseArmor = def.armorClass || 10;
+    const armorType = def.armorTypeId; // 1: Light, 2: Medium, 3: Heavy
+    let dexBonus = statMods.dex;
+    if (armorType === 2) dexBonus = Math.min(2, dexBonus);
+    if (armorType === 3) dexBonus = 0;
+    finalAC = baseArmor + dexBonus + shieldBonus;
+  } else if (hasUnarmoredDefense) {
+    if (unarmoredWis) finalAC = 10 + statMods.dex + statMods.wis;
+    else if (unarmoredCon) finalAC = 10 + statMods.dex + statMods.con + shieldBonus;
+    else finalAC = 10 + statMods.dex + shieldBonus;
+  } else {
+    finalAC = 10 + statMods.dex + shieldBonus;
+  }
+
+  // Global AC bonuses from items / features (Ring of Protection, Defense fighting style, Túnica de Freya, etc.)
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && m.subType === 'armor-class') {
+      finalAC += (m.value || 0);
+    }
+  });
+
+  formData.ac = String(finalAC);
   setVal('combatAC', formData.ac);
 
-  let speed = data.race && data.race.weightSpeeds ? data.race.weightSpeeds.normal.walk : 30;
-  if (data.modifiers && data.modifiers.class) {
-    data.modifiers.class.forEach(m => {
-      if (m.type === 'bonus' && m.subType === 'unarmored-movement') speed += m.value;
-    });
-  }
-  formData.speed = speed + ' ft';
-  setVal('combatSpeed', formData.speed);
-
-  // CD calculation (8 + prof + main stat mod, default to 10 + prof)
-  formData.cd = String(8 + profBonus + Math.max(statMods.int, statMods.wis, statMods.cha, dexMod));
+  // 9. SPELL SAVE DC / CD (8 + prof + main casting ability mod + DC bonuses from items like Dragonhide Belt, Rod of the Pact Keeper)
+  let mainCastingMod = Math.max(statMods.int, statMods.wis, statMods.cha, statMods.dex);
+  let dcBonus = 0;
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && (m.subType === 'spell-save-dc' || m.subType.includes('-spell-save-dc') || m.subType === 'ki-save-dc')) {
+      dcBonus += (m.value || 0);
+    }
+  });
+  formData.cd = String(8 + profBonus + mainCastingMod + dcBonus);
   setVal('combatCD', formData.cd);
 
-  // Weapons
+  // 10. DEFENSES / RESISTANCES / IMMUNITIES
+  const defenseList = [];
+  allMods.forEach(m => {
+    if (m.type === 'resistance') defenseList.push(`Resistencia: ${m.friendlySubtypeName || m.subType}`);
+    if (m.type === 'immunity') defenseList.push(`Inmunidad: ${m.friendlySubtypeName || m.subType}`);
+    if (m.type === 'vulnerability') defenseList.push(`Vulnerabilidad: ${m.friendlySubtypeName || m.subType}`);
+  });
+  formData.defenses = defenseList.length > 0 ? defenseList.join('\n') : '';
+  setVal('combatDefenses', formData.defenses);
+
+  // 11. WEAPONS & ATTACKS
   if (data.inventory) {
     const getCustomName = (itemId) => {
       if (!data.characterValues) return null;
@@ -691,36 +835,70 @@ function parseDdbJson(json) {
       return custom ? custom.value : null;
     };
 
-    const weapons = data.inventory.filter(i => i.definition.filterType === 'Weapon' && i.equipped);
-    weapons.slice(0, 5).forEach((w, index) => {
+    const isMonk = data.classes && data.classes.some(c => c.definition.name.toLowerCase() === 'monk');
+    const monkLevel = isMonk ? data.classes.find(c => c.definition.name.toLowerCase() === 'monk').level : 0;
+    // Monk martial arts die: 1-4: 1d4, 5-10: 1d6 (or 1d8 in 2024), 11-16: 1d8, 17-20: 1d10
+    const monkDie = monkLevel >= 17 ? '1d10' : (monkLevel >= 11 ? '1d8' : (monkLevel >= 5 ? '1d6' : '1d4'));
+
+    const equippedWeapons = data.inventory.filter(i => i.definition.filterType === 'Weapon' && i.equipped);
+    equippedWeapons.slice(0, 5).forEach((w, index) => {
       formData.weapons[index].name = getCustomName(w.id) || w.definition.name;
       setVal(`w${index+1}Name`, formData.weapons[index].name);
 
-      let atkBonus = dexMod + profBonus;
+      const props = w.definition.properties ? w.definition.properties.map(p => p.name) : [];
+      const isFinesse = props.includes('Finesse');
+      const isRanged = props.includes('Ammunition') || props.includes('Range') || w.definition.attackType === 2;
+      const isSimple = w.definition.type === 'Simple' || (w.definition.categories && w.definition.categories.includes('Simple'));
+      const isMonkWeapon = isMonk && (isSimple || w.definition.name.toLowerCase().includes('shortsword'));
+
+      // Determine ability modifier
+      let abilityMod = statMods.str;
+      if (isRanged) abilityMod = statMods.dex;
+      else if (isFinesse || isMonkWeapon) abilityMod = Math.max(statMods.str, statMods.dex);
+
+      // Check weapon magic bonus
       let magicBonus = 0;
       if (w.definition.grantedModifiers) {
         w.definition.grantedModifiers.forEach(m => {
-          if (m.subType === 'magic') magicBonus += m.value;
+          if (m.type === 'bonus' && m.subType === 'magic') magicBonus += (m.value || 0);
         });
       }
-      atkBonus += magicBonus;
-      formData.weapons[index].atk = atkBonus >= 0 ? `+${atkBonus}` : String(atkBonus);
+
+      // Global attack bonuses
+      let globalAtkBonus = 0;
+      allMods.forEach(m => {
+        if (m.type === 'bonus' && (m.subType === 'weapon-attacks' || (isRanged ? m.subType === 'ranged-weapon-attacks' : m.subType === 'melee-weapon-attacks'))) {
+          globalAtkBonus += (m.value || 0);
+        }
+      });
+
+      const totalAtk = abilityMod + profBonus + magicBonus + globalAtkBonus;
+      formData.weapons[index].atk = totalAtk >= 0 ? `+${totalAtk}` : String(totalAtk);
       setVal(`w${index+1}Atk`, formData.weapons[index].atk);
 
-      if (w.definition.damage) {
-         formData.weapons[index].dmg = w.definition.damage.diceString + (magicBonus ? `+${magicBonus}` : '');
-         setVal(`w${index+1}Dmg`, formData.weapons[index].dmg);
-      }
-      formData.weapons[index].type = w.definition.damageType || '';
+      // Damage calculation
+      let dmgDice = w.definition.damage ? w.definition.damage.diceString : monkDie;
+      let globalDmgBonus = 0;
+      allMods.forEach(m => {
+        if (m.type === 'bonus' && (m.subType === 'weapon-damage' || (isRanged ? m.subType === 'ranged-weapon-damage' : m.subType === 'melee-weapon-damage'))) {
+          globalDmgBonus += (m.value || 0);
+        }
+      });
+
+      const totalDmgBonus = abilityMod + magicBonus + globalDmgBonus;
+      formData.weapons[index].dmg = `${dmgDice}${totalDmgBonus >= 0 ? '+' + totalDmgBonus : totalDmgBonus}`;
+      setVal(`w${index+1}Dmg`, formData.weapons[index].dmg);
+
+      const rawType = w.definition.damageType || '';
+      formData.weapons[index].type = damageTypeTranslations[rawType] || rawType;
       setVal(`w${index+1}Type`, formData.weapons[index].type);
-      
-      const props = w.definition.properties ? w.definition.properties.map(p => p.name).join(', ') : '';
-      formData.weapons[index].notes = props;
+
+      formData.weapons[index].notes = props.join(', ');
       setVal(`w${index+1}Notes`, formData.weapons[index].notes);
     });
   }
 
-  // Roleo: Avatar / Portrait
+  // 12. ROLEO: AVATAR / PORTRAIT
   if (data.decorations) {
     formData.portraitUrl = data.decorations.avatarUrl || 
       (data.decorations.defaultBackdrop && data.decorations.defaultBackdrop.backdropAvatarUrl) || '';
@@ -728,7 +906,7 @@ function parseDdbJson(json) {
     if (urlInp) urlInp.value = formData.portraitUrl;
   }
 
-  // Roleo: Skills & Proficiencies
+  // 13. ROLEO: SKILLS & EXPERTISE (Considers proficiencies, expertises, and item bonuses)
   const ddbSkillSubtypes = {
     acrobatics: 'acrobatics',
     animalHandling: 'animal-handling',
@@ -750,49 +928,84 @@ function parseDdbJson(json) {
     survival: 'survival'
   };
 
-  const allModifiers = [
-    ...(data.modifiers?.race || []),
-    ...(data.modifiers?.class || []),
-    ...(data.modifiers?.background || []),
-    ...(data.modifiers?.feat || [])
-  ];
-
   SKILLS_DEF.forEach(s => {
     const subtype = ddbSkillSubtypes[s.id];
-    const isProf = allModifiers.some(m => m.type === 'proficiency' && m.subType === subtype);
-    const abilityMod = statMods[s.stat] || 0;
-    const skillBonus = isProf ? abilityMod + profBonus : abilityMod;
-    const bonusStr = skillBonus >= 0 ? `+${skillBonus}` : `${skillBonus}`;
+    const isProf = allMods.some(m => m.type === 'proficiency' && m.subType === subtype);
+    const isExpertise = allMods.some(m => m.type === 'expertise' && m.subType === subtype);
 
-    formData.skills[s.id] = { prof: isProf, val: bonusStr };
+    let specSkillBonus = 0;
+    allMods.forEach(m => {
+      if (m.type === 'bonus' && m.subType === subtype) {
+        specSkillBonus += (m.value || 0);
+      }
+    });
+
+    const abilityMod = statMods[s.stat] || 0;
+    const profMult = isExpertise ? 2 : (isProf ? 1 : 0);
+    const finalSkillBonus = abilityMod + (profMult * profBonus) + specSkillBonus;
+    const bonusStr = finalSkillBonus >= 0 ? `+${finalSkillBonus}` : `${finalSkillBonus}`;
+
+    formData.skills[s.id] = { prof: isProf || isExpertise, val: bonusStr };
     
     const chk = document.getElementById(`sk-${s.id}`);
-    if (chk) chk.checked = isProf;
+    if (chk) chk.checked = isProf || isExpertise;
     const valInp = document.getElementById(`skval-${s.id}`);
     if (valInp) valInp.value = bonusStr;
   });
 
-  // Roleo: Passives
-  const percBonus = parseInt(formData.skills.perception?.val || '0', 10);
-  const invBonus = parseInt(formData.skills.investigation?.val || '0', 10);
-  const insBonus = parseInt(formData.skills.insight?.val || '0', 10);
+  // 14. ROLEO: PASSIVE PERCEPTION, INVESTIGATION & INSIGHT
+  let passivePercBonus = 0;
+  let passiveInvBonus = 0;
+  let passiveInsBonus = 0;
 
-  formData.passives.perception = String(10 + (isNaN(percBonus) ? 0 : percBonus));
-  formData.passives.investigation = String(10 + (isNaN(invBonus) ? 0 : invBonus));
-  formData.passives.insight = String(10 + (isNaN(insBonus) ? 0 : insBonus));
+  allMods.forEach(m => {
+    if (m.type === 'bonus' && m.subType === 'passive-perception') passivePercBonus += (m.value || 0);
+    if (m.type === 'bonus' && m.subType === 'passive-investigation') passiveInvBonus += (m.value || 0);
+    if (m.type === 'bonus' && m.subType === 'passive-insight') passiveInsBonus += (m.value || 0);
+  });
+
+  const percVal = parseInt(formData.skills.perception?.val || '0', 10);
+  const invVal = parseInt(formData.skills.investigation?.val || '0', 10);
+  const insVal = parseInt(formData.skills.insight?.val || '0', 10);
+
+  formData.passives.perception = String(10 + (isNaN(percVal) ? 0 : percVal) + passivePercBonus);
+  formData.passives.investigation = String(10 + (isNaN(invVal) ? 0 : invVal) + passiveInvBonus);
+  formData.passives.insight = String(10 + (isNaN(insVal) ? 0 : insVal) + passiveInsBonus);
 
   setVal('passivePerception', formData.passives.perception);
   setVal('passiveInvestigation', formData.passives.investigation);
   setVal('passiveInsight', formData.passives.insight);
 
-  // Roleo: Inspiration
+  // 15. ROLEO: INSPIRATION
   formData.inspiration = !!data.inspiration;
   const inspChk = document.getElementById('chk-roleo-inspiration');
   if (inspChk) inspChk.checked = formData.inspiration;
 
-  // Roleo: Traits and Proficiencies
+  // 16. ROLEO: LANGUAGES & OTHER PROFICIENCIES
+  const languages = [];
+  const otherProfs = [];
+  allMods.forEach(m => {
+    if (m.type === 'language') {
+      const name = m.friendlySubtypeName || m.subType;
+      if (name && !languages.includes(name)) languages.push(name);
+    }
+    if (m.type === 'proficiency' && !m.subType.includes('-saving-throws') && !Object.values(ddbSkillSubtypes).includes(m.subType)) {
+      const name = m.friendlySubtypeName || m.subType;
+      if (name && !otherProfs.includes(name) && !name.toLowerCase().includes('choose')) {
+        otherProfs.push(name);
+      }
+    }
+  });
+
+  formData.otherProficiencies = [
+    languages.length > 0 ? `Idiomas: ${languages.join(', ')}` : '',
+    otherProfs.length > 0 ? `Competencias: ${otherProfs.join(', ')}` : ''
+  ].filter(Boolean).join('\n');
+  setVal('otherProficiencies', formData.otherProficiencies);
+
+  // 17. ROLEO: TRAITS & FEATURES
   const traits = [];
-  if (data.traits) traits.push(`Rasgos: ${data.traits.personalityTraits || ''}`);
+  if (data.traits && data.traits.personalityTraits) traits.push(`Rasgos: ${data.traits.personalityTraits}`);
   if (data.ideals) traits.push(`Ideales: ${data.ideals}`);
   if (data.bonds) traits.push(`Vínculos: ${data.bonds}`);
   if (data.flaws) traits.push(`Defectos: ${data.flaws}`);
@@ -800,7 +1013,7 @@ function parseDdbJson(json) {
   setVal('otherTraits', formData.otherTraits);
 
   updatePreview();
-  alert("¡Personaje y datos de Roleo importados con éxito!");
+  alert("¡Personaje importado con éxito con todos los bonos y valores finales calculados!");
 }
 
 // =========================================
